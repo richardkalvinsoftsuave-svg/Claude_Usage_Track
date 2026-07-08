@@ -103,9 +103,11 @@ def _run_ocr(image_path: Path) -> str:
         if _ocr_engine is None:
             from paddleocr import PaddleOCR  # type: ignore
             try:
-                _ocr_engine = PaddleOCR(lang="en")
+                _ocr_engine = PaddleOCR(lang="en", enable_mkldnn=False)
             except (TypeError, RuntimeError):
-                _ocr_engine = PaddleOCR(lang="en", use_textline_orientation=False)
+                _ocr_engine = PaddleOCR(
+                    lang="en", use_textline_orientation=False, enable_mkldnn=False
+                )
         result = _ocr_engine.ocr(str(image_path))
         lines: List[str] = []
         if result and result[0]:
