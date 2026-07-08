@@ -173,6 +173,8 @@ def confirm_upload(
         uploader_name=payload.uploader_name.strip(),
         image_path=payload.image_path,
         original_filename=payload.original_filename or full_path.name,
+        manager_id=payload.manager_id,
+        team_id=payload.team_id,
         auth_method=payload.auth_method,
         email=payload.email,
         organization=payload.organization,
@@ -196,6 +198,8 @@ def confirm_upload(
 @router.get("", response_model=PaginatedUploads)
 def list_uploads(
     user: Optional[str] = Query(None, description="Filter by uploader name"),
+    manager_id: Optional[int] = Query(None, description="Filter by manager"),
+    team_id: Optional[int] = Query(None, description="Filter by team"),
     from_date: Optional[str] = Query(None, alias="from", description="UTC date ISO"),
     to_date: Optional[str] = Query(None, alias="to", description="UTC date ISO"),
     skip: int = Query(0, ge=0),
@@ -207,6 +211,10 @@ def list_uploads(
 
     if user:
         query = query.filter(UsageUpload.uploader_name.ilike(f"%{user}%"))
+    if manager_id is not None:
+        query = query.filter(UsageUpload.manager_id == manager_id)
+    if team_id is not None:
+        query = query.filter(UsageUpload.team_id == team_id)
     if from_date:
         query = query.filter(UsageUpload.uploaded_at >= from_date)
     if to_date:

@@ -6,16 +6,11 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
 
-connect_args = (
-    {"check_same_thread": False}
-    if settings.database_url.startswith("sqlite")
-    else {}
-)
-
 engine = create_engine(
     settings.database_url,
-    connect_args=connect_args,
     echo=False,
+    pool_pre_ping=True,     # verify connections before use (MySQL idle-timeout safety)
+    pool_recycle=3600,      # recycle connections hourly
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

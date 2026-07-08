@@ -11,12 +11,12 @@ class Settings(BaseSettings):
     """All environment-driven configuration."""
 
     model_config = ConfigDict(
-        env_file=".env",
+        env_file=str(Path(__file__).resolve().parent.parent / ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
     )
 
-    database_url: str = "sqlite:///./claude_usage.db"
+    database_url: str = "mysql+pymysql://root:password@localhost:3306/usage_db"
     upload_dir: Path = Path("./uploads")
     extraction_mode: str = "ocr_plus_manual_vlm"  # ocr_only | ocr_plus_manual_vlm | docling_only | docling_plus_manual_vlm | vlm_only
     ollama_host: str = "http://localhost:11434"
