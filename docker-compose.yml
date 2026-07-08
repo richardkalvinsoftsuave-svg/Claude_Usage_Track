@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: claude-usage-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-claude_usage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claude_usage}
+      POSTGRES_DB: ${POSTGRES_DB:-claude_usage}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: claude-usage-ollama
+    # Pull the requested model on first start, then keep serving.
+    # The API calls this service with keep_alive=0, so the model unloads
+    # from RAM after each manual "Re-extract with AI" request.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull $${OLLAMA_MODEL:-qwen2.5vl:3b}
+        wait
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claude-usage-api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://claude_usage:claude_usage@db:5432/claude_usage}
+      UPLOAD_DIR: /app/uploads
+      EXTRACTION_MODE: ${EXTRACTION_MODE:-ocr_plus_manual_vlm}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}
+    volumes:
+      - uploads:/app/uploads
+      - paddleocr_cache:/root/.paddleocr
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  ollama_data:
+  uploads:
+  paddleocr_cache:

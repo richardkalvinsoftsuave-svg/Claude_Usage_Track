@@ -1,0 +1,35 @@
+<div id="recent-uploads" class="mt-10">
+  {% if confirmed %}
+    <div class="mb-4 rounded-md bg-green-50 p-4 text-sm text-green-800">
+      Upload saved successfully.
+    </div>
+  {% endif %}
+
+  <h2 class="text-lg font-semibold mb-3">Recent uploads</h2>
+  {% if recent %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for u in recent %}
+        <div class="bg-white rounded-lg shadow p-4">
+          <div class="flex items-start gap-3">
+            <a href="/uploads/{{ u.image_path }}" target="_blank">
+              <img src="/uploads/{{ u.image_path }}" class="w-16 h-16 object-cover rounded border" alt="thumb">
+            </a>
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate">{{ u.uploader_name }}</div>
+              <div class="text-xs text-gray-500">{{ u.uploaded_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+              <div class="mt-1 flex gap-2 text-xs">
+                <span class="font-semibold">S: {{ u.session_usage_pct if u.session_usage_pct is not none else '-' }}%</span>
+                <span class="font-semibold">W: {{ u.weekly_usage_pct if u.weekly_usage_pct is not none else '-' }}%</span>
+              </div>
+              <div class="mt-1">
+                <span class="badge badge-{{ u.extraction_method }}">{{ u.extraction_method | upper }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-gray-500 text-sm">No uploads yet.</p>
+  {% endif %}
+</div>

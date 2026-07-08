@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Claude Usage Tracker{% endblock %}
+
+{% block content %}
+<div>
+  <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
+
+  <!-- Summary widgets -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Avg session usage</div>
+      <div class="text-2xl font-bold">{{ '%.1f'|format(team_avg_session) if team_avg_session is not none else '-' }}%</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Avg weekly usage</div>
+      <div class="text-2xl font-bold">{{ '%.1f'|format(team_avg_weekly) if team_avg_weekly is not none else '-' }}%</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Avg Fable usage</div>
+      <div class="text-2xl font-bold">{{ '%.1f'|format(team_avg_fable) if team_avg_fable is not none else '-' }}%</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Uploads today</div>
+      <div class="text-2xl font-bold">{{ uploads_today }}</div>
+    </div>
+    <div class="bg-white rounded-lg shadow p-4">
+      <div class="text-sm text-gray-500">Uploads this week</div>
+      <div class="text-2xl font-bold">{{ uploads_this_week }}</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+    <!-- Leaderboard -->
+    <div class="bg-white rounded-lg shadow p-4 lg:col-span-1">
+      <h2 class="font-semibold mb-3">Closest to limit</h2>
+      {% if leaderboard %}
+        <ul class="divide-y">
+          {% for row in leaderboard %}
+            <li class="py-2 flex justify-between items-center">
+              <a href="/dashboard/user/{{ row.uploader_name | urlencode }}" class="font-medium hover:text-blue-600">{{ row.uploader_name }}</a>
+              <div class="text-xs text-right">
+                <div>S {{ row.session_usage_pct if row.session_usage_pct is not none else '-' }}%</div>
+                <div>W {{ row.weekly_usage_pct if row.weekly_usage_pct is not none else '-' }}%</div>
+                <div>F {{ row.weekly_fable_usage_pct if row.weekly_fable_usage_pct is not none else '-' }}%</div>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm text-gray-500">No data yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- Per-user trends -->
+    <div class="bg-white rounded-lg shadow p-4 lg:col-span-2">
+      <h2 class="font-semibold mb-3">Per-user trends</h2>
+      {% if trends %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {% for user, points in trends.items() %}
+            <div>
+              <a href="/dashboard/user/{{ user | urlencode }}" class="text-sm font-medium hover:text-blue-600">{{ user }}</a>
+              <canvas id="trend-{{ loop.index }}"></canvas>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm text-gray-500">No trend data yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white rounded-lg shadow p-4 mb-6">
+    <form method="get" action="/dashboard" class="flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs font-medium text-gray-700">User</label>
+        <input name="user" value="{{ filter_user or '' }}" class="border rounded px-2 py-1 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-700">From</label>
+        <input name="from" type="date" value="{{ filter_from or '' }}" class="border rounded px-2 py-1 text-sm">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-700">To</label>
+        <input name="to" type="date" value="{{ filter_to or '' }}" class="border rounded px-2 py-1 text-sm">
+      </div>
+      <button type="submit" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-500">Filter</button>
+      <a href="/dashboard" class="text-sm text-blue-600 hover:underline">Reset</a>
+    </form>
+  </div>
+
+  <!-- Uploads table -->
+  <div class="bg-white rounded-lg shadow overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Time</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Org</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Session</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Weekly</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fable</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Method</th>
+          <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Screenshot</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for u in uploads %}
+          <tr>
+            <td class="px-4 py-2 text-sm">
+              <a href="/dashboard/user/{{ u.uploader_name | urlencode }}" class="font-medium hover:text-blue-600">{{ u.uploader_name }}</a>
+            </td>
+            <td class="px-4 py-2 text-sm text-gray-500">{{ u.uploaded_at.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+            <td class="px-4 py-2 text-sm">{{ u.organization or '-' }}</td>
+            <td class="px-4 py-2 text-sm">{{ u.plan_tier or '-' }}</td>
+            <td class="px-4 py-2 text-sm">{{ u.session_usage_pct if u.session_usage_pct is not none else '-' }}%</td>
+            <td class="px-4 py-2 text-sm">{{ u.weekly_usage_pct if u.weekly_usage_pct is not none else '-' }}%</td>
+            <td class="px-4 py-2 text-sm">{{ u.weekly_fable_usage_pct if u.weekly_fable_usage_pct is not none else '-' }}%</td>
+            <td class="px-4 py-2 text-sm"><span class="badge badge-{{ u.extraction_method }}">{{ u.extraction_method | upper }}</span></td>
+            <td class="px-4 py-2 text-sm">
+              <a href="/uploads/{{ u.image_path }}" target="_blank" class="text-blue-600 hover:underline">View</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="px-4 py-4 text-sm text-gray-500">No uploads match the filters.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const trends = {{ trends | tojson }};
+  Object.entries(trends).forEach(([user, points], idx) => {
+    const ctx = document.getElementById('trend-' + (idx + 1));
+    if (!ctx) return;
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: points.map(p => p.uploaded_at.slice(0, 10)),
+        datasets: [
+          {
+            label: 'Session %',
+            data: points.map(p => p.session_usage_pct),
+            borderColor: '#3b82f6',
+            backgroundColor: '#3b82f6',
+            pointRadius: 2,
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: 'Weekly %',
+            data: points.map(p => p.weekly_usage_pct),
+            borderColor: '#9333ea',
+            backgroundColor: '#9333ea',
+            pointRadius: 2,
+            borderWidth: 2,
+            tension: 0.3,
+          },
+          {
+            label: 'Fable %',
+            data: points.map(p => p.weekly_fable_usage_pct),
+            borderColor: '#f59e0b',
+            backgroundColor: '#f59e0b',
+            pointRadius: 2,
+            borderWidth: 2,
+            tension: 0.3,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { display: false },
+          y: { min: 0, max: 100, display: false }
+        }
+      }
+    });
+  });
+</script>
+{% endblock %}

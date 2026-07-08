@@ -1,0 +1,24 @@
+/* Custom styles that complement Tailwind */
+.drop-zone {
+  border: 2px dashed #cbd5e1;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.drop-zone.dragover {
+  border-color: #3b82f6;
+  background-color: #eff6ff;
+}
+.upload-thumb {
+  max-height: 12rem;
+  object-fit: contain;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge-ocr { background: #dbeafe; color: #1e40af; }
+.badge-vlm { background: #dcfce7; color: #166534; }
+.badge-manual { background: #f3f4f6; color: #374151; }
