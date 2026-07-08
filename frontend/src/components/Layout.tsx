@@ -35,6 +35,18 @@ export default function Layout() {
               >
                 Dashboard
               </NavLink>
+              <NavLink
+                to="/teams"
+                className={({ isActive }) =>
+                  `text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'text-blue-600 border-b-2 border-blue-600 pb-[13px]'
+                      : 'text-gray-600 hover:text-gray-900 pb-[13px]'
+                  }`
+                }
+              >
+                Teams
+              </NavLink>
             </div>
           </div>
         </div>

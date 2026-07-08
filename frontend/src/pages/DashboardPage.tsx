@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
-import { getDashboardSummary } from '../api';
-import type { DashboardSummary } from '../types';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { getDashboardSummary, getManagers, getTeams } from '../api';
+import type { DashboardSummary, Manager, Team } from '../types';
 import { Link } from 'react-router-dom';
 
 export default function DashboardPage() {
@@ -9,12 +9,52 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [days, setDays] = useState(30);
 
+  // Org filter state
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [managerFilter, setManagerFilter] = useState<number | null>(null);
+  const [teamFilter, setTeamFilter] = useState<number | null>(null);
+
+  // Fetch managers on mount
+  useEffect(() => {
+    getManagers()
+      .then(setManagers)
+      .catch(() => setManagers([]));
+  }, []);
+
+  // Fetch teams when manager filter changes
+  useEffect(() => {
+    if (managerFilter != null) {
+      getTeams(managerFilter)
+        .then((t) => {
+          setTeams(t);
+          if (teamFilter != null && !t.find((x) => x.id === teamFilter)) {
+            setTeamFilter(null);
+          }
+        })
+        .catch(() => setTeams([]));
+    } else {
+      getTeams()
+        .then(setTeams)
+        .catch(() => setTeams([]));
+    }
+  }, [managerFilter]);
+
+  // Fetch dashboard data
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getDashboardSummary(days).then(setData).catch((e) => setError(e.message)).finally(() => setLoading(false));
-  }, [days]);
+    getDashboardSummary({
+      days,
+      manager_id: managerFilter ?? undefined,
+      team_id: teamFilter ?? undefined,
+    })
+      .then(setData)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [days, managerFilter, teamFilter]);
 
+  // Trend chart data
   const trendData = useMemo(() => {
     if (!data?.per_user_trends) return null;
     const users = data.per_user_trends;
@@ -41,7 +81,7 @@ export default function DashboardPage() {
     return { labels, datasets };
   }, [data]);
 
-  const canvasRef = (e: HTMLCanvasElement | null) => {
+  const canvasRef = useCallback((e: HTMLCanvasElement | null) => {
     if (!e || !trendData || trendData.labels.length <= 1) return;
     import('chart.js/auto').then(({ Chart }) => {
       const existing = Chart.getChart(e);
@@ -57,7 +97,7 @@ export default function DashboardPage() {
         },
       });
     });
-  };
+  }, [trendData]);
 
   if (loading) return <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" /></div>;
   if (error) return <div className="rounded-md bg-red-50 border border-red-200 p-4 text-sm text-red-700">{error}</div>;
@@ -65,16 +105,45 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      {/* ── Header with filters ── */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
-          <option value={7}>Last 7 days</option>
-          <option value={14}>Last 14 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-        </select>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Manager filter */}
+          <select
+            value={managerFilter ?? ''}
+            onChange={(e) => setManagerFilter(e.target.value ? Number(e.target.value) : null)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">All Managers</option>
+            {managers.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+
+          {/* Team filter */}
+          <select
+            value={teamFilter ?? ''}
+            onChange={(e) => setTeamFilter(e.target.value ? Number(e.target.value) : null)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          >
+            <option value="">All Teams</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+
+          {/* Time range */}
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500">
+            <option value={7}>Last 7 days</option>
+            <option value={14}>Last 14 days</option>
+            <option value={30}>Last 30 days</option>
+            <option value={90}>Last 90 days</option>
+          </select>
+        </div>
       </div>
 
+      {/* ── Stat cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <StatCard label="Uploads today" value={data.uploads_today} />
         <StatCard label="Uploads this week" value={data.uploads_this_week} />
@@ -82,6 +151,71 @@ export default function DashboardPage() {
         <StatCard label="Avg weekly %" value={data.team_avg_weekly_usage != null ? `${Math.round(data.team_avg_weekly_usage)}%` : '—'} />
       </div>
 
+      {/* ── Manager-wise summary cards ── */}
+      {data.by_manager.length > 0 && (managerFilter == null || teamFilter == null) && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4">By Manager</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {data.by_manager.map((m) => (
+              <div
+                key={m.manager_id}
+                className="bg-white rounded-lg shadow p-4 cursor-pointer hover:shadow-md transition-shadow border border-transparent hover:border-blue-300"
+                onClick={() => setManagerFilter(m.manager_id)}
+              >
+                <p className="text-sm font-semibold text-gray-800">{m.manager_name}</p>
+                <p className="text-xs text-gray-500 mt-1">{m.team_count} team{m.team_count !== 1 ? 's' : ''}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-[10px] uppercase text-gray-400">Avg Session</p>
+                    <p className="text-lg font-bold text-gray-900">{m.avg_session_pct != null ? `${Math.round(m.avg_session_pct)}%` : '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] uppercase text-gray-400">Avg Weekly</p>
+                    <p className="text-lg font-bold text-gray-900">{m.avg_weekly_pct != null ? `${Math.round(m.avg_weekly_pct)}%` : '—'}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Team-wise breakdown table ── */}
+      {data.by_team.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4">By Team</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left border-b border-gray-200">
+                  <th className="pb-2 font-medium text-gray-500">Team</th>
+                  <th className="pb-2 font-medium text-gray-500">Manager</th>
+                  <th className="pb-2 font-medium text-gray-500 text-right">Members</th>
+                  <th className="pb-2 font-medium text-gray-500 text-right">Avg Session</th>
+                  <th className="pb-2 font-medium text-gray-500 text-right">Avg Weekly</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.by_team.map((t) => (
+                  <tr
+                    key={t.team_id}
+                    className="border-b border-gray-100 last:border-0 cursor-pointer hover:bg-blue-50 transition-colors"
+                    onClick={() => { setManagerFilter(null); setTeamFilter(t.team_id); }}
+                  >
+                    <td className="py-2 font-medium text-blue-600">{t.team_name}</td>
+                    <td className="py-2 text-gray-500">{t.manager_name}</td>
+                    <td className="py-2 text-right tabular-nums">{t.member_count}</td>
+                    <td className="py-2 text-right tabular-nums font-mono">{t.avg_session_pct != null ? `${Math.round(t.avg_session_pct)}%` : '—'}</td>
+                    <td className="py-2 text-right tabular-nums font-mono">{t.avg_weekly_pct != null ? `${Math.round(t.avg_weekly_pct)}%` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leaderboard ── */}
       {data.leaderboard.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Leaderboard</h2>
@@ -114,6 +248,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ── Trend chart ── */}
       {trendData && trendData.labels.length > 1 && (
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Usage trends</h2>

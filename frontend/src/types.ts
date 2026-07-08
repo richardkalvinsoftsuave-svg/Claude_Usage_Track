@@ -1,3 +1,22 @@
+// ── Org hierarchy ──
+
+export interface Manager {
+  id: number;
+  name: string;
+}
+
+export interface Team {
+  id: number;
+  name: string;
+  manager_id: number;
+}
+
+export interface TeamMember {
+  id: number;
+  name: string;
+  team_id: number;
+}
+
 // ── Extracted usage fields ──
 
 export interface ExtractedUsage {
@@ -28,6 +47,8 @@ export interface UploadConfirmRequest {
   uploader_name: string;
   image_path: string;
   original_filename: string;
+  manager_id: number | null;
+  team_id: number | null;
   auth_method: string | null;
   email: string | null;
   organization: string | null;
@@ -79,6 +100,23 @@ export interface PerUserTrend {
   points: TrendPoint[];
 }
 
+export interface ManagerSummary {
+  manager_id: number;
+  manager_name: string;
+  team_count: number;
+  avg_weekly_pct: number | null;
+  avg_session_pct: number | null;
+}
+
+export interface TeamSummary {
+  team_id: number;
+  team_name: string;
+  manager_name: string;
+  member_count: number;
+  avg_weekly_pct: number | null;
+  avg_session_pct: number | null;
+}
+
 export interface DashboardSummary {
   team_avg_session_usage: number | null;
   team_avg_weekly_usage: number | null;
@@ -86,6 +124,8 @@ export interface DashboardSummary {
   uploads_today: number;
   uploads_this_week: number;
   per_user_trends: PerUserTrend[];
+  by_manager: ManagerSummary[];
+  by_team: TeamSummary[];
 }
 
 export interface UserHistoryResponse {

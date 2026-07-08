@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
-import { uploadImage, confirmUpload, reextract } from '../api';
-import type { UploadPreviewResponse } from '../types';
+import { useState, useRef, useEffect } from 'react';
+import { uploadImage, confirmUpload, reextract, getManagers, getTeams, getTeamMembers } from '../api';
+import type { UploadPreviewResponse, Manager, Team, TeamMember } from '../types';
 
 const EXTRACTION_METHOD = 'ocr';
 
@@ -13,6 +13,68 @@ export default function UploadPage() {
   const [uploaderName, setUploaderName] = useState('');
   const [extracted, setExtracted] = useState<Record<string, string | number | null>>({});
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Org hierarchy state
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
+
+  // Fetch managers on mount
+  useEffect(() => {
+    getManagers()
+      .then(setManagers)
+      .catch(() => setManagers([]));
+  }, []);
+
+  // Fetch teams when manager changes
+  useEffect(() => {
+    if (selectedManagerId != null) {
+      getTeams(selectedManagerId)
+        .then((t) => {
+          setTeams(t);
+          if (selectedTeamId != null && !t.find((x) => x.id === selectedTeamId)) {
+            setSelectedTeamId(null);
+          }
+        })
+        .catch(() => setTeams([]));
+    } else {
+      setTeams([]);
+      setSelectedTeamId(null);
+    }
+  }, [selectedManagerId]);
+
+  // Fetch members when team changes
+  useEffect(() => {
+    if (selectedTeamId != null) {
+      getTeamMembers(selectedTeamId)
+        .then((m) => {
+          setMembers(m);
+          if (selectedMemberId != null && !m.find((x) => x.id === selectedMemberId)) {
+            setSelectedMemberId(null);
+            setUploaderName('');
+          }
+        })
+        .catch(() => setMembers([]));
+    } else {
+      setMembers([]);
+      setSelectedMemberId(null);
+      setUploaderName('');
+    }
+  }, [selectedTeamId]);
+
+  // Auto-fill uploader name when member is selected
+  const handleMemberChange = (memberId: number | null) => {
+    setSelectedMemberId(memberId);
+    if (memberId != null) {
+      const member = members.find((m) => m.id === memberId);
+      setUploaderName(member?.name ?? '');
+    } else {
+      setUploaderName('');
+    }
+  };
 
   function initExtracted(p: UploadPreviewResponse) {
     setExtracted({
@@ -86,12 +148,18 @@ export default function UploadPage() {
 
   function handleConfirm() {
     if (!preview || !uploaderName.trim()) return;
+    if (selectedManagerId == null || selectedTeamId == null || selectedMemberId == null) {
+      setError('Please select Manager, Team, and Member before saving.');
+      return;
+    }
     setSaving(true);
     setError(null);
     confirmUpload({
       uploader_name: uploaderName.trim(),
       image_path: preview.image_path,
       original_filename: preview.original_filename,
+      manager_id: selectedManagerId,
+      team_id: selectedTeamId,
       auth_method: extracted.auth_method?.toString() || null,
       email: extracted.email?.toString() || null,
       organization: extracted.organization?.toString() || null,
@@ -128,6 +196,8 @@ export default function UploadPage() {
     },
     className: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500',
   });
+
+  const canConfirm = uploaderName.trim() && selectedManagerId != null && selectedTeamId != null && selectedMemberId != null;
 
   return (
     <div>
@@ -175,9 +245,54 @@ export default function UploadPage() {
             </div>
 
             <div className="flex-1 space-y-4">
+              {/* ── Org hierarchy dropdowns (Manager → Team → Member) ── */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Manager *</label>
+                  <select
+                    value={selectedManagerId ?? ''}
+                    onChange={(e) => setSelectedManagerId(e.target.value ? Number(e.target.value) : null)}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  >
+                    <option value="">-- Select --</option>
+                    {managers.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Team *</label>
+                  <select
+                    value={selectedTeamId ?? ''}
+                    onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : null)}
+                    disabled={selectedManagerId == null}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value="">-- Select --</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Member (uploader) *</label>
+                  <select
+                    value={selectedMemberId ?? ''}
+                    onChange={(e) => handleMemberChange(e.target.value ? Number(e.target.value) : null)}
+                    disabled={selectedTeamId == null}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    <option value="">-- Select --</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700">Uploader name *</label>
-                <input type="text" required value={uploaderName} onChange={(e) => setUploaderName(e.target.value)} placeholder="Your name" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                <label className="block text-sm font-medium text-gray-700">Uploader name</label>
+                <input type="text" value={uploaderName} onChange={(e) => setUploaderName(e.target.value)} placeholder="Auto-filled from member selection" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm bg-gray-50 text-gray-600 focus:border-blue-500 focus:ring-blue-500" readOnly />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -220,7 +335,7 @@ export default function UploadPage() {
                 <button type="button" onClick={handleReextract} disabled={uploading} className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 disabled:opacity-50">
                   {uploading ? 'Re-extracting…' : 'Re-extract with AI'}
                 </button>
-                <button type="button" onClick={handleConfirm} disabled={saving || !uploaderName.trim()} className="inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50">
+                <button type="button" onClick={handleConfirm} disabled={saving || !canConfirm} className="inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-50">
                   {saving ? 'Saving…' : 'Confirm & Save'}
                 </button>
                 <button type="button" onClick={handleReset} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
