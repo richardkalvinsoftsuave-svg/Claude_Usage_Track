@@ -1,13 +1,14 @@
 """Org hierarchy CRUD endpoints — managers, teams, team members."""
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Manager, Team, TeamMember
+from app.models import Manager, Team, TeamMember, UsageUpload
 from app.schemas import (
     ManagerCreate,
     ManagerRead,
@@ -137,6 +138,27 @@ def delete_team(team_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
     db.delete(t)
     db.commit()
+
+
+@router.post("/teams/{team_id}/reset-usage", status_code=status.HTTP_200_OK)
+def reset_team_usage(team_id: int, db: Session = Depends(get_db)):
+    """Delete all uploads (records + image files) belonging to a team."""
+    t = db.query(Team).filter(Team.id == team_id).first()
+    if not t:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
+
+    uploads = db.query(UsageUpload).filter(UsageUpload.team_id == team_id).all()
+
+    deleted_files = 0
+    for u in uploads:
+        # Delete the image file from disk if it exists
+        if u.image_path and os.path.isfile(u.image_path):
+            os.remove(u.image_path)
+            deleted_files += 1
+        db.delete(u)
+
+    db.commit()
+    return {"message": f"Deleted {len(uploads)} upload(s) and {deleted_files} image file(s) for team '{t.name}'"}
 
 
 # ── Team Members ─────────────────────────────────────────────────

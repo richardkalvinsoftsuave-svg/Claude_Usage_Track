@@ -51,6 +51,7 @@ def _build_leaderboard(db: Session, latest_sq):
                 latest_session_pct=u.session_usage_pct,
                 latest_weekly_pct=u.weekly_usage_pct,
                 last_upload_at=u.uploaded_at,
+                latest_image_path=u.image_path,
             )
             for u in latest_uploads
         ],
@@ -158,6 +159,8 @@ def dashboard_summary(
             member_count=len(t_uploads),
             avg_session_pct=sum(t_session) / len(t_session) if t_session else None,
             avg_weekly_pct=sum(t_weekly) / len(t_weekly) if t_weekly else None,
+            max_session_pct=max(t_session) if t_session else None,
+            max_weekly_pct=max(t_weekly) if t_weekly else None,
         ))
 
     return DashboardSummary(

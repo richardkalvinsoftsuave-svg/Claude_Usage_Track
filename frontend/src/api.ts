@@ -101,6 +101,10 @@ export function deleteTeamMember(id: number) {
   return request<void>(`/teams/team-members/${id}`, { method: 'DELETE' });
 }
 
+export function resetTeamUsage(teamId: number) {
+  return request<{ message: string }>(`/teams/teams/${teamId}/reset-usage`, { method: 'POST' });
+}
+
 // ── Uploads ──
 
 export async function uploadImage(file: File): Promise<UploadPreviewResponse> {

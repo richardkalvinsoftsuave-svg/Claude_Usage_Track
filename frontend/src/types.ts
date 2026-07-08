@@ -87,6 +87,7 @@ export interface LeaderboardEntry {
   latest_session_pct: number | null;
   latest_weekly_pct: number | null;
   last_upload_at: string | null;
+  latest_image_path: string | null;
 }
 
 export interface TrendPoint {
@@ -115,6 +116,8 @@ export interface TeamSummary {
   member_count: number;
   avg_weekly_pct: number | null;
   avg_session_pct: number | null;
+  max_session_pct: number | null;
+  max_weekly_pct: number | null;
 }
 
 export interface DashboardSummary {

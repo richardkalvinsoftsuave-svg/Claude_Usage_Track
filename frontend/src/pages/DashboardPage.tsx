@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { getDashboardSummary, getManagers, getTeams } from '../api';
+import { getDashboardSummary, getManagers, getTeams, resetTeamUsage } from '../api';
 import type { DashboardSummary, Manager, Team } from '../types';
 import { Link } from 'react-router-dom';
 
@@ -39,6 +39,31 @@ export default function DashboardPage() {
         .catch(() => setTeams([]));
     }
   }, [managerFilter]);
+
+  // Image modal state
+  const [modalImage, setModalImage] = useState<string | null>(null);
+
+  // Reset state
+  const [resettingTeamId, setResettingTeamId] = useState<number | null>(null);
+
+  const handleResetTeam = async (teamId: number, teamName: string) => {
+    if (!confirm(`Reset all usage data for team "${teamName}" to zero?`)) return;
+    setResettingTeamId(teamId);
+    try {
+      await resetTeamUsage(teamId);
+      // Refresh dashboard data
+      const fresh = await getDashboardSummary({
+        days,
+        manager_id: managerFilter ?? undefined,
+        team_id: teamFilter ?? undefined,
+      });
+      setData(fresh);
+    } catch (e: any) {
+      alert('Reset failed: ' + (e.message || 'Unknown error'));
+    } finally {
+      setResettingTeamId(null);
+    }
+  };
 
   // Fetch dashboard data
   useEffect(() => {
@@ -193,6 +218,9 @@ export default function DashboardPage() {
                   <th className="pb-2 font-medium text-gray-500 text-right">Members</th>
                   <th className="pb-2 font-medium text-gray-500 text-right">Avg Session</th>
                   <th className="pb-2 font-medium text-gray-500 text-right">Avg Weekly</th>
+                  <th className="pb-2 font-medium text-gray-500 text-right">Max Session</th>
+                  <th className="pb-2 font-medium text-gray-500 text-right">Max Weekly</th>
+                  <th className="pb-2 font-medium text-gray-500 text-center">Reset</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,6 +235,17 @@ export default function DashboardPage() {
                     <td className="py-2 text-right tabular-nums">{t.member_count}</td>
                     <td className="py-2 text-right tabular-nums font-mono">{t.avg_session_pct != null ? `${Math.round(t.avg_session_pct)}%` : '—'}</td>
                     <td className="py-2 text-right tabular-nums font-mono">{t.avg_weekly_pct != null ? `${Math.round(t.avg_weekly_pct)}%` : '—'}</td>
+                    <td className="py-2 text-right tabular-nums font-mono text-orange-600">{t.max_session_pct != null ? `${t.max_session_pct}%` : '—'}</td>
+                    <td className="py-2 text-right tabular-nums font-mono text-orange-600">{t.max_weekly_pct != null ? `${t.max_weekly_pct}%` : '—'}</td>
+                    <td className="py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        disabled={resettingTeamId === t.team_id}
+                        onClick={() => handleResetTeam(t.team_id, t.team_name)}
+                        className="px-2 py-1 text-xs rounded bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {resettingTeamId === t.team_id ? '…' : 'Reset'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -228,6 +267,7 @@ export default function DashboardPage() {
                   <th className="pb-2 font-medium text-gray-500 text-right">Session</th>
                   <th className="pb-2 font-medium text-gray-500 text-right">Weekly</th>
                   <th className="pb-2 font-medium text-gray-500 text-right">Last upload</th>
+                  <th className="pb-2 font-medium text-gray-500 text-center">Image</th>
                 </tr>
               </thead>
               <tbody>
@@ -240,6 +280,18 @@ export default function DashboardPage() {
                     <td className="py-2 text-right tabular-nums">{entry.latest_session_pct != null ? `${entry.latest_session_pct}%` : '—'}</td>
                     <td className="py-2 text-right tabular-nums">{entry.latest_weekly_pct != null ? `${entry.latest_weekly_pct}%` : '—'}</td>
                     <td className="py-2 text-right text-gray-500 text-xs">{entry.last_upload_at ? new Date(entry.last_upload_at).toLocaleDateString() : '—'}</td>
+                    <td className="py-2 text-center">
+                      {entry.latest_image_path ? (
+                        <button
+                          onClick={() => setModalImage(entry.latest_image_path)}
+                          className="px-2 py-1 text-xs rounded bg-blue-50 text-blue-600 hover:bg-blue-100"
+                        >
+                          View
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -253,6 +305,24 @@ export default function DashboardPage() {
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4">Usage trends</h2>
           <canvas ref={canvasRef} />
+        </div>
+      )}
+
+      {/* ── Image modal ── */}
+      {modalImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setModalImage(null)}
+        >
+          <div className="relative max-w-3xl max-h-[90vh] p-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-white/80 text-gray-700 hover:bg-white text-lg font-bold"
+              onClick={() => setModalImage(null)}
+            >
+              ×
+            </button>
+            <img src={modalImage} alt="Uploaded screenshot" className="max-w-full max-h-[85vh] rounded-lg shadow-xl" />
+          </div>
         </div>
       )}
     </div>

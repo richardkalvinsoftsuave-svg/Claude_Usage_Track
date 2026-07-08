@@ -179,6 +179,7 @@ class LeaderboardEntry(BaseModel):
     latest_session_pct: Optional[int]
     latest_weekly_pct: Optional[int]
     last_upload_at: Optional[datetime]
+    latest_image_path: Optional[str] = None
 
 
 class TrendPoint(BaseModel):
@@ -215,6 +216,8 @@ class TeamSummary(BaseModel):
     member_count: int = 0
     avg_weekly_pct: Optional[float] = None
     avg_session_pct: Optional[float] = None
+    max_session_pct: Optional[int] = None
+    max_weekly_pct: Optional[int] = None
 
 
 class DashboardSummary(BaseModel):
