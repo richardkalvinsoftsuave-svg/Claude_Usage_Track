@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.extraction import docling_extract_usage, ocr_extract_usage, vlm_extract_usage
+from app.extraction import ocr_extract_usage, vlm_extract_usage
 from app.models import UsageUpload
 from app.routers.uploads import _save_upload, _secure_path
 
@@ -57,9 +57,6 @@ async def upload_preview(request: Request, file: UploadFile = File(...)):
     if mode == "vlm_only":
         result = vlm_extract_usage(full_path)
         method = "vlm"
-    elif mode.startswith("docling"):
-        result = docling_extract_usage(full_path)
-        method = "docling"
     else:
         result = ocr_extract_usage(full_path)
         method = "ocr"

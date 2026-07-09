@@ -21,7 +21,7 @@ Copy `.env.example` to `.env` and adjust:
 |----------|---------|-------------|
 | `DATABASE_URL` | `sqlite:///./claude_usage.db` | SQLite or Postgres URL |
 | `UPLOAD_DIR` | `./uploads` | Where screenshots are stored |
-| `EXTRACTION_MODE` | `ocr_only` | `ocr_only`, `ocr_plus_manual_vlm`, `docling_only`, `docling_plus_manual_vlm`, or `vlm_only` |
+| `EXTRACTION_MODE` | `ocr_only` | `ocr_only`, `ocr_plus_manual_vlm`, or `vlm_only` |
 | `OLLAMA_HOST` | `http://localhost:11434` | Local Ollama API |
 | `OLLAMA_MODEL` | `qwen2.5vl:3b` | Model used for manual re-extraction |
 | `MAX_FILE_SIZE` | `10485760` | Max upload size in bytes (10 MB) |
@@ -69,7 +69,6 @@ If OCR is inaccurate, the frontend can call `POST /api/uploads/reextract` to run
 
 - Target machine: CPU-only, ~16 GB RAM, often only a few GB free.
 - Keep `EXTRACTION_MODE=ocr_only` for the lightest footprint.
-- `EXTRACTION_MODE=docling_only` uses a local Docling vision model instead of OCR.
 - For VLM usage, ensure ~4–6 GB of free RAM during inference and close heavy apps if needed.
 
 ## Running with Docker Compose
@@ -85,7 +84,7 @@ This starts:
 - `db` — PostgreSQL for persistent storage
 - `ollama` — local Ollama instance; on first run it pulls `qwen2.5vl:3b`
 
-To run without the VLM service (lightest footprint), set `EXTRACTION_MODE=ocr_only` in `.env` and start only the API and database. For Docling-only mode use `EXTRACTION_MODE=docling_only`:
+To run without the VLM service (lightest footprint), set `EXTRACTION_MODE=ocr_only` in `.env` and start only the API and database:
 
 ```bash
 docker compose up api db --build

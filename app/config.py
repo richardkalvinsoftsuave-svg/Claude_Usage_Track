@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     database_url: str = "mysql+pymysql://root:password@localhost:3306/usage_db"
     upload_dir: Path = Path("./uploads")
-    extraction_mode: str = "ocr_plus_manual_vlm"  # ocr_only | ocr_plus_manual_vlm | docling_only | docling_plus_manual_vlm | vlm_only
+    extraction_mode: str = "ocr_plus_manual_vlm"  # ocr_only | ocr_plus_manual_vlm | vlm_only
     ollama_host: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5vl:3b"
     max_file_size: int = 10 * 1024 * 1024  # 10 MB

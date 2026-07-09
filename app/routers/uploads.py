@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.extraction import docling_extract_usage, ocr_extract_usage, vlm_extract_usage
+from app.extraction import ocr_extract_usage, vlm_extract_usage
 from app.models import UsageUpload
 from app.schemas import (
     PaginatedUploads,
@@ -46,7 +46,7 @@ async def _save_upload(file: UploadFile) -> tuple[Path, str, str]:
     """Validate and save an uploaded image, returning (full_path, filename, original_name).
 
     The image is always saved as PNG to ensure broad compatibility with all
-    extraction backends (PaddleOCR, Docling, Ollama VLM).
+    extraction backends (PaddleOCR, Ollama VLM).
     """
     original_name = file.filename or "upload.png"
     ext = Path(original_name).suffix.lower()
@@ -117,9 +117,6 @@ async def create_upload(
     if mode == "vlm_only":
         result = vlm_extract_usage(full_path)
         method = "vlm"
-    elif mode.startswith("docling"):
-        result = docling_extract_usage(full_path)
-        method = "docling"
     else:
         result = ocr_extract_usage(full_path)
         method = "ocr"

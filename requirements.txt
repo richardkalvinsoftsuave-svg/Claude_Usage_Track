@@ -30,9 +30,6 @@ python-dotenv>=1.0.0
 paddlepaddle>=2.6.0
 paddleocr>=2.7.0
 
-# Docling (alternative vision-based extraction)
-# Docling downloads its model weights on first use and caches them locally.
-docling>=2.0.0
 
 # Testing
 pytest>=8.0.0
