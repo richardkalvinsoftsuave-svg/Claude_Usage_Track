@@ -15,7 +15,7 @@ Build a full-stack web application called **"Claude Usage Tracker"** that lets a
 - **Image → data extraction (local only, no cloud):** This is the primary path, not a two-stage automatic pipeline. Since every screenshot comes from the same source (Claude Code's `/usage` command) with a fixed, predictable field layout, OCR + regex is the main solution — not a "fast path" that falls back automatically.
   1. **Primary — PaddleOCR + regex:** Run PaddleOCR (not Tesseract — it handles small UI/terminal text and varying color themes noticeably better) on every uploaded screenshot, then parse the extracted text with regex/heuristics tuned to the fixed `/usage` field names (Session %, Weekly %, plan tier, reset time). This runs on every upload, is CPU-fast, and needs no model download.
   2. **Manual, on-demand — local VLM:** Do **not** auto-trigger this on low OCR confidence. The OCR result always goes straight to the editable confirmation form first. Only if the user judges it badly wrong do they click a **"Re-extract with AI"** button, which sends the image to a **local Ollama instance running `qwen2.5vl:3b`** (4-bit GGUF, CPU inference) with a strict JSON-only extraction prompt. This keeps the VLM as an on-demand tool, not a background cost on every upload.
-  - Make the extraction backend pluggable (`EXTRACTION_MODE=ocr_only | ocr_plus_manual_vlm | vlm_only`) via `.env` so it can be tuned per machine.
+  - OCR is the only automatic path; the VLM is available only through the manual "Re-extract with AI" button.
 - **Containerization:** Docker Compose with services: `api` (FastAPI), `db` (Postgres, optional/SQLite fallback), `ollama` (runs `qwen2.5vl:3b`, CPU-only, no GPU passthrough required). Configure the Ollama call with **`keep_alive=0`** so the model unloads from RAM immediately after each inference instead of staying resident — on a 16GB machine with only a few GB typically free, reclaiming that RAM between uploads matters more than shaving a few seconds off inference latency.
 
 ### Hardware Context (design around this)
@@ -24,7 +24,7 @@ Target machine: no dedicated GPU (Intel integrated graphics only), 16 GB RAM (of
 - PaddleOCR is the default path for every upload, so the VLM only consumes CPU/RAM when a user explicitly clicks "Re-extract with AI" — this keeps standing resource usage low.
 - Ollama must be called with `keep_alive=0` (or the equivalent config) on every request so the model is unloaded from RAM right after each inference rather than staying resident between uploads.
 - Document minimum recommended free RAM (~4–6 GB) for the brief window when the VLM is actively running, and suggest the user close other heavy apps if extraction is slow or fails.
-- `docker-compose.yml` should let the user disable the `ollama` service entirely (`EXTRACTION_MODE=ocr_only`) for a lighter footprint if they don't need the VLM fallback at all.
+- `docker-compose.yml` should let the user disable the `ollama` service entirely for a lighter footprint if they don't need the VLM fallback at all.
 
 ### No Authentication
 This is an internal tracking tool, not a multi-tenant app — skip login/auth entirely. On the upload page, just have the person type or select their name/identifier (a simple text input, ideally with autocomplete/datalist from names seen in past uploads so it stays consistent). Store that name directly on the `UsageUpload` row. No user table, no passwords, no sessions, no roles — anyone with access to the app can upload and view the dashboard.
@@ -133,7 +133,7 @@ Handle missing/unparseable fields gracefully (null them out) rather than failing
 6. Build the dashboard with the summary widgets and table
 7. Add the per-user detail/trend page
 8. Write a `docker-compose.yml` that spins up everything with one `docker compose up` — including a step that pulls `qwen2.5vl:3b` into the Ollama container on first run
-9. Add a `README.md` with setup instructions, hardware expectations (CPU-only, expect 10-40s VLM extraction time), and a `.env.example` listing required vars (`DATABASE_URL`, `EXTRACTION_MODE`, `OLLAMA_HOST`, `OLLAMA_MODEL`, `SECRET_KEY`)
+9. Add a `README.md` with setup instructions, hardware expectations (CPU-only, expect 10-40s VLM extraction time), and a `.env.example` listing required vars (`DATABASE_URL`, `OLLAMA_HOST`, `OLLAMA_MODEL`, `SECRET_KEY`)
 
 ### Non-functional requirements
 - No external network calls at runtime — everything (model weights, fonts, JS libs) should be either vendored/local or pulled once during `docker compose up` and cached in a volume

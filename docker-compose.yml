@@ -45,7 +45,6 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://claude_usage:claude_usage@db:5432/claude_usage}
       UPLOAD_DIR: /app/uploads
-      EXTRACTION_MODE: ${EXTRACTION_MODE:-ocr_plus_manual_vlm}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
       MAX_FILE_SIZE: ${MAX_FILE_SIZE:-10485760}

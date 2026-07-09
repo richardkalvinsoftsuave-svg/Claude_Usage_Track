@@ -53,13 +53,8 @@ def upload_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/partials/upload-preview")
 async def upload_preview(request: Request, file: UploadFile = File(...)):
     full_path, filename, original_name = await _save_upload(file)
-    mode = settings.extraction_mode
-    if mode == "vlm_only":
-        result = vlm_extract_usage(full_path)
-        method = "vlm"
-    else:
-        result = ocr_extract_usage(full_path)
-        method = "ocr"
+    result = ocr_extract_usage(full_path)
+    method = "ocr"
     extracted = result["extracted"]
     return templates.TemplateResponse(
         request,

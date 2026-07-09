@@ -46,7 +46,7 @@ async def _save_upload(file: UploadFile) -> tuple[Path, str, str]:
     """Validate and save an uploaded image, returning (full_path, filename, original_name).
 
     The image is always saved as PNG to ensure broad compatibility with all
-    extraction backends (PaddleOCR, Ollama VLM).
+    extraction backends (PaddleOCR/RapidOCR, Ollama VLM).
     """
     original_name = file.filename or "upload.png"
     ext = Path(original_name).suffix.lower()
@@ -110,16 +110,11 @@ async def _save_upload(file: UploadFile) -> tuple[Path, str, str]:
 async def create_upload(
     file: UploadFile = File(...),
 ) -> UploadPreviewResponse:
-    """Save an image and run the default extraction (OCR, or VLM if configured)."""
+    """Save an image and run OCR extraction (RapidOCR primary, PaddleOCR fallback)."""
     full_path, filename, original_name = await _save_upload(file)
 
-    mode = settings.extraction_mode
-    if mode == "vlm_only":
-        result = vlm_extract_usage(full_path)
-        method = "vlm"
-    else:
-        result = ocr_extract_usage(full_path)
-        method = "ocr"
+    result = ocr_extract_usage(full_path)
+    method = "ocr"
 
     extracted = result["extracted"]
     raw_text = result.get("raw_text")
