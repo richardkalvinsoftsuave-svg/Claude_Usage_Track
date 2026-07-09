@@ -98,51 +98,59 @@ def _run_ocr(image_path: Path) -> str:
     """
     global _ocr_engine
 
-    # ── PaddleOCR path (3.x with OCRResult / rec_texts) ──
+    # ── RapidOCR path (fastest on CPU, ONNX Runtime) ──
+    try:
+        from rapidocr import RapidOCR  # type: ignore
+        if _ocr_engine is None or not isinstance(_ocr_engine, RapidOCR):
+            _ocr_engine = RapidOCR()
+        result = _ocr_engine(str(image_path))
+        # RapidOCR 3.x returns RapidOCROutput with .txts attribute
+        if hasattr(result, 'txts') and result.txts is not None:
+            lines = [t for t in result.txts if t]
+            return "\n".join(lines)
+        # RapidOCR 2.x legacy: returns (list_of_tuples, elapse)
+        if isinstance(result, (list, tuple)) and len(result) == 2:
+            raw_lines, _ = result
+            if raw_lines:
+                return "\n".join(
+                    line[1] for line in raw_lines
+                    if len(line) > 1 and line[1]
+                )
+    except ImportError:
+        pass  # fall through to PaddleOCR
+    except Exception as exc:  # pragma: no cover
+        logger.exception("RapidOCR failed, falling back to PaddleOCR: %s", exc)
+
+    # ── PaddleOCR fallback (slower but works without ONNX Runtime) ──
+    # Only detection + recognition (skip doc-orientation, unwarping, and
+    # textline-orientation models — the extra 3 are wasted on screenshots).
     try:
         if _ocr_engine is None:
             from paddleocr import PaddleOCR  # type: ignore
-            try:
-                _ocr_engine = PaddleOCR(lang="en", enable_mkldnn=False)
-            except (TypeError, RuntimeError):
-                _ocr_engine = PaddleOCR(
-                    lang="en", use_textline_orientation=False, enable_mkldnn=False
-                )
+            _ocr_engine = PaddleOCR(
+                lang="en",
+                use_doc_orientation_classify=False,
+                use_doc_unwarping=False,
+                use_textline_orientation=False,
+                enable_mkldnn=False,  # oneDNN crashes on this CPU (PIR attribute error)
+            )
         result = _ocr_engine.ocr(str(image_path))
         lines: List[str] = []
         if result and result[0]:
             first = result[0]
-            # PaddleOCR 3.x returns OCRResult dict-like objects with rec_texts
             if hasattr(first, 'get') and 'rec_texts' in first:
                 lines = [t for t in first['rec_texts'] if t]
             else:
-                # PaddleOCR 2.x legacy: [[bbox], (text, confidence)]
                 for line in first:
                     text = line[1][0] if len(line) > 1 and line[1] else ""
                     if text:
                         lines.append(text)
         return "\n".join(lines)
-    except Exception:
-        pass  # fall through to RapidOCR
-
-    # ── RapidOCR fallback (always available, used by server logs) ──
-    try:
-        from rapidocr import RapidOCR  # type: ignore
-        if _ocr_engine is None or not isinstance(_ocr_engine, RapidOCR):
-            _ocr_engine = RapidOCR()
-        result, _ = _ocr_engine(str(image_path))
-        lines = []
-        if result:
-            for line in result:
-                text = line[1] if len(line) > 1 and line[1] else ""
-                if text:
-                    lines.append(text)
-        return "\n".join(lines)
     except ImportError:
-        logger.warning("Neither PaddleOCR nor RapidOCR is available")
+        logger.warning("Neither RapidOCR nor PaddleOCR is available")
         return ""
     except Exception as exc:  # pragma: no cover
-        logger.exception("OCR failed: %s", exc)
+        logger.exception("PaddleOCR failed: %s", exc)
         return ""
 
 
