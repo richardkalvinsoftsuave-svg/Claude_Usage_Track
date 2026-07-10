@@ -1,72 +1,11 @@
 """Pydantic request/response models."""
 from __future__ import annotations
 
+from datetime import date as date_type
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-# ── Org Hierarchy ────────────────────────────────────────────────
-
-class ManagerCreate(BaseModel):
-    """Create a new manager."""
-    name: str = Field(..., min_length=1, max_length=120)
-
-
-class ManagerUpdate(BaseModel):
-    """Update a manager's name."""
-    name: str = Field(..., min_length=1, max_length=120)
-
-
-class ManagerRead(BaseModel):
-    """A persisted manager record."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-
-
-class TeamCreate(BaseModel):
-    """Create a new team."""
-    name: str = Field(..., min_length=1, max_length=120)
-    manager_id: int
-
-
-class TeamUpdate(BaseModel):
-    """Update a team."""
-    name: Optional[str] = Field(None, min_length=1, max_length=120)
-    manager_id: Optional[int] = None
-
-
-class TeamRead(BaseModel):
-    """A persisted team record."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    manager_id: int
-
-
-class TeamMemberCreate(BaseModel):
-    """Create a new team member."""
-    name: str = Field(..., min_length=1, max_length=120)
-    team_id: int
-
-
-class TeamMemberUpdate(BaseModel):
-    """Update a team member."""
-    name: Optional[str] = Field(None, min_length=1, max_length=120)
-    team_id: Optional[int] = None
-
-
-class TeamMemberRead(BaseModel):
-    """A persisted team member record."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    team_id: int
 
 
 # ── Extracted usage ──────────────────────────────────────────────
@@ -80,13 +19,11 @@ class ExtractedUsage(BaseModel):
     organization: Optional[str] = None
     plan_tier: Optional[str] = None
 
-    # Usage percentages
-    session_usage_pct: Optional[int] = None
+    # Usage percentages (only weekly + Fable)
     weekly_usage_pct: Optional[int] = None
     weekly_fable_usage_pct: Optional[int] = None
 
     # Reset datetimes
-    session_reset_at: Optional[datetime] = None
     weekly_reset_at: Optional[datetime] = None
     weekly_fable_reset_at: Optional[datetime] = None
 
@@ -99,28 +36,27 @@ class UploadPreviewResponse(BaseModel):
     extracted: ExtractedUsage
     raw_text: Optional[str] = None
 
+    # True when the reset date shown was pulled from this email's still-active
+    # cycle rather than freshly extracted from this screenshot (see uploads.py
+    # _active_reset_at). Lets the frontend show a "locked" indicator.
+    weekly_reset_locked: bool = False
+    fable_reset_locked: bool = False
+
 
 class UploadConfirmRequest(BaseModel):
     """User-confirmed / edited upload data."""
 
-    uploader_name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field(..., min_length=3, max_length=255)
     image_path: str
     original_filename: Optional[str] = None
 
-    # Org hierarchy
-    manager_id: Optional[int] = None
-    team_id: Optional[int] = None
-
     auth_method: Optional[str] = None
-    email: Optional[str] = None
     organization: Optional[str] = None
     plan_tier: Optional[str] = None
 
-    session_usage_pct: Optional[int] = Field(None, ge=0, le=100)
     weekly_usage_pct: Optional[int] = Field(None, ge=0, le=100)
     weekly_fable_usage_pct: Optional[int] = Field(None, ge=0, le=100)
 
-    session_reset_at: Optional[datetime] = None
     weekly_reset_at: Optional[datetime] = None
     weekly_fable_reset_at: Optional[datetime] = None
 
@@ -135,24 +71,18 @@ class UsageUploadResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    uploader_name: str
     uploaded_at: datetime
     image_path: str
     original_filename: str
 
-    manager_id: Optional[int] = None
-    team_id: Optional[int] = None
-
     auth_method: Optional[str]
-    email: Optional[str]
+    email: str
     organization: Optional[str]
     plan_tier: Optional[str]
 
-    session_usage_pct: Optional[int]
     weekly_usage_pct: Optional[int]
     weekly_fable_usage_pct: Optional[int]
 
-    session_reset_at: Optional[datetime]
     weekly_reset_at: Optional[datetime]
     weekly_fable_reset_at: Optional[datetime]
 
@@ -172,71 +102,118 @@ class PaginatedUploads(BaseModel):
 
 # ── Dashboard ────────────────────────────────────────────────────
 
-class LeaderboardEntry(BaseModel):
-    """A single row in the "closest to limit" leaderboard."""
+class DailyUsage(BaseModel):
+    """Aggregated usage for one user on one date."""
 
-    uploader_name: str
-    latest_session_pct: Optional[int]
-    latest_weekly_pct: Optional[int]
+    weekly: Optional[int] = None
+    fable: Optional[int] = None
+
+
+class UserDayRow(BaseModel):
+    """One user's usage across a date range."""
+
+    email: str
+    organization: Optional[str] = None
+    plan_tier: Optional[str] = None
+    daily: Dict[str, DailyUsage]
+    latest_weekly: Optional[int] = None
+    latest_fable: Optional[int] = None
+    last_upload_at: Optional[datetime] = None
+    latest_image_path: Optional[str] = None
+
+    # Projected end-of-cycle % at the current burn rate, and whether that
+    # projection meets/exceeds 100% before the cycle resets.
+    weekly_projected_pct: Optional[int] = None
+    weekly_at_risk: bool = False
+    fable_projected_pct: Optional[int] = None
+    fable_at_risk: bool = False
+
+
+class LeaderboardEntry(BaseModel):
+    """A single row in the usage leaderboard."""
+
+    email: str
+    latest_weekly: Optional[int]
+    latest_fable: Optional[int]
     last_upload_at: Optional[datetime]
     latest_image_path: Optional[str] = None
+
+    weekly_projected_pct: Optional[int] = None
+    weekly_at_risk: bool = False
+    fable_projected_pct: Optional[int] = None
+    fable_at_risk: bool = False
 
 
 class TrendPoint(BaseModel):
     """One point in a per-user trend line."""
 
     uploaded_at: datetime
-    session_usage_pct: Optional[int]
     weekly_usage_pct: Optional[int]
+    weekly_fable_usage_pct: Optional[int]
 
 
 class UserTrend(BaseModel):
-    """Trend data for one uploader."""
+    """Trend data for one email."""
 
-    uploader_name: str
+    email: str
     points: List[TrendPoint]
-
-
-class ManagerSummary(BaseModel):
-    """Aggregated stats for one manager's team."""
-
-    manager_id: int
-    manager_name: str
-    team_count: int = 0
-    avg_weekly_pct: Optional[float] = None
-    avg_session_pct: Optional[float] = None
-
-
-class TeamSummary(BaseModel):
-    """Aggregated stats for one team."""
-
-    team_id: int
-    team_name: str
-    manager_name: str
-    member_count: int = 0
-    avg_weekly_pct: Optional[float] = None
-    avg_session_pct: Optional[float] = None
-    max_session_pct: Optional[int] = None
-    max_weekly_pct: Optional[int] = None
 
 
 class DashboardSummary(BaseModel):
     """Aggregate stats for the dashboard widgets."""
 
-    team_avg_session_usage: Optional[float]
-    team_avg_weekly_usage: Optional[float]
+    dates: List[str]
+    users: List[UserDayRow]
     leaderboard: List[LeaderboardEntry]
     uploads_today: int
     uploads_this_week: int
     per_user_trends: List[UserTrend]
-    by_manager: List[ManagerSummary] = []
-    by_team: List[TeamSummary] = []
+
+
+class UserComparison(BaseModel):
+    """Delta for one user between two dates."""
+
+    email: str
+    weekly_from: Optional[int]
+    weekly_to: Optional[int]
+    weekly_delta: Optional[int]
+    weekly_reset_occurred: bool = False
+    fable_from: Optional[int]
+    fable_to: Optional[int]
+    fable_delta: Optional[int]
+    fable_reset_occurred: bool = False
+
+
+class DashboardCompareResponse(BaseModel):
+    """Per-user comparison between two dates."""
+
+    from_date: str
+    to_date: str
+    users: List[UserComparison]
 
 
 class UserHistoryResponse(BaseModel):
     """Full upload history + trend for a single user."""
 
-    uploader_name: str
+    email: str
     total_uploads: int
     uploads: List[UsageUploadResponse]
     trend: List[TrendPoint]
+
+
+# ── Reset date correction ───────────────────────────────────────
+
+class ResetDateUpdateRequest(BaseModel):
+    """Correct a wrongly-extracted reset date for a user's active cycle."""
+
+    metric: Literal["weekly", "fable"]
+    reset_at: datetime
+
+
+class ResetDateUpdateResponse(BaseModel):
+    """Result of a reset-date correction."""
+
+    email: str
+    metric: str
+    reset_at: datetime
+    rows_updated: int

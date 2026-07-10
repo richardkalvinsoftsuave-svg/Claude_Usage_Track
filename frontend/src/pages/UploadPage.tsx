@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { uploadImage, confirmUpload, reextract, getManagers, getTeams, getTeamMembers } from '../api';
-import type { UploadPreviewResponse, Manager, Team, TeamMember } from '../types';
+import { useState, useRef } from 'react';
+import { uploadImage, confirmUpload, reextract } from '../api';
+import type { UploadPreviewResponse } from '../types';
 
 const EXTRACTION_METHOD = 'ocr';
 
@@ -10,102 +10,7 @@ export default function UploadPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploaderName, setUploaderName] = useState('');
-  const [extracted, setExtracted] = useState<Record<string, string | number | null>>({});
   const fileRef = useRef<HTMLInputElement>(null);
-
-  // Org hierarchy state
-  const [managers, setManagers] = useState<Manager[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [selectedManagerId, setSelectedManagerId] = useState<number | null>(null);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
-  const [selectedMemberId, setSelectedMemberId] = useState<number | null>(null);
-
-  // Fetch managers on mount
-  useEffect(() => {
-    getManagers()
-      .then(setManagers)
-      .catch(() => setManagers([]));
-  }, []);
-
-  // Fetch teams when manager changes
-  useEffect(() => {
-    if (selectedManagerId != null) {
-      getTeams(selectedManagerId)
-        .then((t) => {
-          setTeams(t);
-          if (selectedTeamId != null && !t.find((x) => x.id === selectedTeamId)) {
-            setSelectedTeamId(null);
-          }
-        })
-        .catch(() => setTeams([]));
-    } else {
-      setTeams([]);
-      setSelectedTeamId(null);
-    }
-  }, [selectedManagerId]);
-
-  // Fetch members when team changes
-  useEffect(() => {
-    if (selectedTeamId != null) {
-      getTeamMembers(selectedTeamId)
-        .then((m) => {
-          setMembers(m);
-          if (selectedMemberId != null && !m.find((x) => x.id === selectedMemberId)) {
-            setSelectedMemberId(null);
-            setUploaderName('');
-          }
-        })
-        .catch(() => setMembers([]));
-    } else {
-      setMembers([]);
-      setSelectedMemberId(null);
-      setUploaderName('');
-    }
-  }, [selectedTeamId]);
-
-  // Auto-fill uploader name when member is selected
-  const handleMemberChange = (memberId: number | null) => {
-    setSelectedMemberId(memberId);
-    if (memberId != null) {
-      const member = members.find((m) => m.id === memberId);
-      setUploaderName(member?.name ?? '');
-    } else {
-      setUploaderName('');
-    }
-  };
-
-  function initExtracted(p: UploadPreviewResponse) {
-    setExtracted({
-      auth_method: p.extracted.auth_method ?? '',
-      email: p.extracted.email ?? '',
-      organization: p.extracted.organization ?? '',
-      plan_tier: p.extracted.plan_tier ?? '',
-      session_usage_pct: p.extracted.session_usage_pct,
-      weekly_usage_pct: p.extracted.weekly_usage_pct,
-      weekly_fable_usage_pct: p.extracted.weekly_fable_usage_pct,
-      session_reset_at: p.extracted.session_reset_at ?? '',
-      weekly_reset_at: p.extracted.weekly_reset_at ?? '',
-      weekly_fable_reset_at: p.extracted.weekly_fable_reset_at ?? '',
-    });
-  }
-
-  function wasEdited(p: UploadPreviewResponse): boolean {
-    const e = p.extracted;
-    return (
-      extracted.auth_method !== (e.auth_method ?? '') ||
-      extracted.email !== (e.email ?? '') ||
-      extracted.organization !== (e.organization ?? '') ||
-      extracted.plan_tier !== (e.plan_tier ?? '') ||
-      extracted.session_usage_pct !== e.session_usage_pct ||
-      extracted.weekly_usage_pct !== e.weekly_usage_pct ||
-      extracted.weekly_fable_usage_pct !== e.weekly_fable_usage_pct ||
-      extracted.session_reset_at !== (e.session_reset_at ?? '') ||
-      extracted.weekly_reset_at !== (e.weekly_reset_at ?? '') ||
-      extracted.weekly_fable_reset_at !== (e.weekly_fable_reset_at ?? '')
-    );
-  }
 
   function handleUpload(file: File) {
     if (!file) return;
@@ -114,10 +19,7 @@ export default function UploadPage() {
     setPreview(null);
     setSaved(false);
     uploadImage(file)
-      .then((p) => {
-        setPreview(p);
-        initExtracted(p);
-      })
+      .then(setPreview)
       .catch((e) => setError(e.message))
       .finally(() => setUploading(false));
   }
@@ -138,44 +40,34 @@ export default function UploadPage() {
     setUploading(true);
     setError(null);
     reextract(preview.image_path)
-      .then((p) => {
-        setPreview(p);
-        initExtracted(p);
-      })
+      .then(setPreview)
       .catch((e) => setError(e.message))
       .finally(() => setUploading(false));
   }
 
   function handleConfirm() {
-    if (!preview || !uploaderName.trim()) return;
-    if (selectedManagerId == null || selectedTeamId == null || selectedMemberId == null) {
-      setError('Please select Manager, Team, and Member before saving.');
-      return;
-    }
+    const email = preview?.extracted.email;
+    if (!preview || !email) return;
+    const e = preview.extracted;
     setSaving(true);
     setError(null);
     confirmUpload({
-      uploader_name: uploaderName.trim(),
+      email: email.trim().toLowerCase(),
       image_path: preview.image_path,
       original_filename: preview.original_filename,
-      manager_id: selectedManagerId,
-      team_id: selectedTeamId,
-      auth_method: extracted.auth_method?.toString() || null,
-      email: extracted.email?.toString() || null,
-      organization: extracted.organization?.toString() || null,
-      plan_tier: extracted.plan_tier?.toString() || null,
-      session_usage_pct: extracted.session_usage_pct != null ? Number(extracted.session_usage_pct) : null,
-      weekly_usage_pct: extracted.weekly_usage_pct != null ? Number(extracted.weekly_usage_pct) : null,
-      weekly_fable_usage_pct: extracted.weekly_fable_usage_pct != null ? Number(extracted.weekly_fable_usage_pct) : null,
-      session_reset_at: extracted.session_reset_at?.toString() || null,
-      weekly_reset_at: extracted.weekly_reset_at?.toString() || null,
-      weekly_fable_reset_at: extracted.weekly_fable_reset_at?.toString() || null,
+      auth_method: e.auth_method,
+      organization: e.organization,
+      plan_tier: e.plan_tier,
+      weekly_usage_pct: e.weekly_usage_pct,
+      weekly_fable_usage_pct: e.weekly_fable_usage_pct,
+      weekly_reset_at: e.weekly_reset_at,
+      weekly_fable_reset_at: e.weekly_fable_reset_at,
       extraction_method: EXTRACTION_METHOD,
       raw_extracted_text: preview.raw_text,
-      was_manually_edited: wasEdited(preview),
+      was_manually_edited: false,
     })
       .then(() => setSaved(true))
-      .catch((e) => setError(e.message))
+      .catch((err) => setError(err.message))
       .finally(() => setSaving(false));
   }
 
@@ -183,21 +75,10 @@ export default function UploadPage() {
     setPreview(null);
     setSaved(false);
     setError(null);
-    setUploaderName('');
     if (fileRef.current) fileRef.current.value = '';
   }
 
-  const fieldProps = (key: string, type: string = 'text') => ({
-    name: key,
-    value: extracted[key] != null ? String(extracted[key]) : '',
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = type === 'number' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value;
-      setExtracted((prev) => ({ ...prev, [key]: val }));
-    },
-    className: 'mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500',
-  });
-
-  const canConfirm = uploaderName.trim() && selectedManagerId != null && selectedTeamId != null && selectedMemberId != null;
+  const canConfirm = Boolean(preview?.extracted.email?.trim());
 
   return (
     <div>
@@ -244,94 +125,44 @@ export default function UploadPage() {
               <img src={`/uploads/${preview.image_path}`} alt="Uploaded" className="max-w-sm rounded border" />
             </div>
 
-            <div className="flex-1 space-y-4">
-              {/* ── Org hierarchy dropdowns (Manager → Team → Member) ── */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Manager *</label>
-                  <select
-                    value={selectedManagerId ?? ''}
-                    onChange={(e) => setSelectedManagerId(e.target.value ? Number(e.target.value) : null)}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  >
-                    <option value="">-- Select --</option>
-                    {managers.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Team *</label>
-                  <select
-                    value={selectedTeamId ?? ''}
-                    onChange={(e) => setSelectedTeamId(e.target.value ? Number(e.target.value) : null)}
-                    disabled={selectedManagerId == null}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    <option value="">-- Select --</option>
-                    {teams.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Member (uploader) *</label>
-                  <select
-                    value={selectedMemberId ?? ''}
-                    onChange={(e) => handleMemberChange(e.target.value ? Number(e.target.value) : null)}
-                    disabled={selectedTeamId == null}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400"
-                  >
-                    <option value="">-- Select --</option>
-                    {members.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+            <div className="flex-1">
+              <p className="text-xs text-gray-400 mb-3">
+                These values were read automatically and can't be edited here. If something looks wrong, try re-extracting,
+                or fix it later from the user's history page.
+              </p>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Uploader name</label>
-                <input type="text" value={uploaderName} onChange={(e) => setUploaderName(e.target.value)} placeholder="Auto-filled from member selection" className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm bg-gray-50 text-gray-600 focus:border-blue-500 focus:ring-blue-500" readOnly />
-              </div>
+              <dl className="divide-y divide-gray-100">
+                <ReadOnlyField label="Auth method" value={preview.extracted.auth_method} />
+                <ReadOnlyField label="Email" value={preview.extracted.email} />
+                <ReadOnlyField label="Organization" value={preview.extracted.organization} />
+                <ReadOnlyField label="Plan" value={preview.extracted.plan_tier} />
+                <ReadOnlyField
+                  label="Weekly usage"
+                  value={preview.extracted.weekly_usage_pct != null ? `${preview.extracted.weekly_usage_pct}%` : null}
+                />
+                <ReadOnlyField
+                  label="Weekly Fable usage"
+                  value={preview.extracted.weekly_fable_usage_pct != null ? `${preview.extracted.weekly_fable_usage_pct}%` : null}
+                />
+                <ReadOnlyField
+                  label="Weekly reset"
+                  value={formatResetDate(preview.extracted.weekly_reset_at)}
+                  locked={preview.weekly_reset_locked}
+                />
+                <ReadOnlyField
+                  label="Fable reset"
+                  value={formatResetDate(preview.extracted.weekly_fable_reset_at)}
+                  locked={preview.fable_reset_locked}
+                />
+              </dl>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {(['auth_method', 'email'] as const).map((k) => (
-                  <div key={k}>
-                    <label className="block text-sm font-medium text-gray-700 capitalize">{k.replace('_', ' ')}</label>
-                    <input {...fieldProps(k, k === 'email' ? 'email' : 'text')} />
-                  </div>
-                ))}
-              </div>
+              {!preview.extracted.email && (
+                <p className="mt-3 text-sm text-amber-600">
+                  Could not detect an email in this screenshot. Try "Re-extract with AI", or retake the screenshot so the email is visible.
+                </p>
+              )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {(['organization', 'plan_tier'] as const).map((k) => (
-                  <div key={k}>
-                    <label className="block text-sm font-medium text-gray-700 capitalize">{k.replace('_', ' ')}</label>
-                    <input {...fieldProps(k)} />
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {(['session_usage_pct', 'weekly_usage_pct', 'weekly_fable_usage_pct'] as const).map((k) => (
-                  <div key={k}>
-                    <label className="block text-sm font-medium text-gray-700 capitalize">{k.replace(/_/g, ' ').replace('pct', '%')}</label>
-                    <input {...fieldProps(k, 'number')} min={0} max={100} />
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {(['session_reset_at', 'weekly_reset_at', 'weekly_fable_reset_at'] as const).map((k) => (
-                  <div key={k}>
-                    <label className="block text-sm font-medium text-gray-700 capitalize">{k.replace(/_/g, ' ').replace('at', '(UTC)')}</label>
-                    <input {...fieldProps(k)} type="datetime-local" />
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-3 pt-5">
                 <button type="button" onClick={handleReextract} disabled={uploading} className="inline-flex items-center rounded-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-500 disabled:opacity-50">
                   {uploading ? 'Re-extracting…' : 'Re-extract with AI'}
                 </button>
@@ -348,10 +179,36 @@ export default function UploadPage() {
       {saved && (
         <div className="bg-white rounded-lg shadow p-6 text-center">
           <div className="text-green-600 text-lg font-semibold mb-2">✓ Upload saved</div>
-          <p className="text-gray-600 mb-4">Your usage data has been recorded.</p>
+          <p className="text-gray-600 mb-4">Usage data has been recorded.</p>
           <button onClick={handleReset} className="inline-flex rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500">Upload another</button>
         </div>
       )}
     </div>
   );
+}
+
+function ReadOnlyField({ label, value, locked }: { label: string; value: string | null | undefined; locked?: boolean }) {
+  return (
+    <div className="grid grid-cols-[160px_1fr] items-center gap-3 py-2 text-sm">
+      <dt className="font-medium text-gray-500">{label}</dt>
+      <dd className="flex items-center gap-2 text-gray-900">
+        {value ? value : <span className="text-gray-300">—</span>}
+        {locked && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600"
+            title="Locked from an earlier upload in this cycle. Fix it on the user's history page if it's wrong."
+          >
+            🔒 locked this cycle
+          </span>
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function formatResetDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString();
 }

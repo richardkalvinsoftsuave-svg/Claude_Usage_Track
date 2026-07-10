@@ -3,7 +3,6 @@ import Layout from './components/Layout';
 import UploadPage from './pages/UploadPage';
 import DashboardPage from './pages/DashboardPage';
 import UserDetailPage from './pages/UserDetailPage';
-import TeamsPage from './pages/TeamsPage';
 
 export default function App() {
   return (
@@ -12,8 +11,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<UploadPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/dashboard/user/:name" element={<UserDetailPage />} />
-          <Route path="/teams" element={<TeamsPage />} />
+          <Route path="/dashboard/user/:email" element={<UserDetailPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

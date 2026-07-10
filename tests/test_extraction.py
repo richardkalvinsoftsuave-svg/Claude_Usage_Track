@@ -27,18 +27,18 @@ Resets Jul 11, 4am (Asia/Seoul)
 """
 
 
-def test_parse_session_and_weekly_percentages():
+def test_parse_weekly_and_fable_percentages():
     result = parse_ocr_text(SAMPLE_OCR)
-    assert result.session_usage_pct == 5
     assert result.weekly_usage_pct == 5
+    assert result.weekly_fable_usage_pct == 9
 
 
 def test_parse_resets_to_utc():
     result = parse_ocr_text(SAMPLE_OCR)
-    assert result.session_reset_at is not None
     assert result.weekly_reset_at is not None
-    assert result.session_reset_at.tzinfo == ZoneInfo("UTC")
+    assert result.weekly_fable_reset_at is not None
     assert result.weekly_reset_at.tzinfo == ZoneInfo("UTC")
+    assert result.weekly_fable_reset_at.tzinfo == ZoneInfo("UTC")
 
 
 def test_parse_plan_tier():
@@ -49,8 +49,8 @@ def test_parse_plan_tier():
 
 def test_parse_empty_text():
     result = parse_ocr_text("")
-    assert result.session_usage_pct is None
     assert result.weekly_usage_pct is None
+    assert result.weekly_fable_usage_pct is None
 
 
 ACCOUNT_OCR = """Account & Usage
@@ -82,9 +82,7 @@ def test_parse_account_layout():
     assert result.email == "ragul@phoenixtechnologies.io"
     assert result.organization == "Phoenix Team Plan"
     assert result.plan_tier == "Claude team"
-    assert result.session_usage_pct == 39
     assert result.weekly_usage_pct == 8
     assert result.weekly_fable_usage_pct == 5
-    assert result.session_reset_at is not None
     assert result.weekly_reset_at is not None
     assert result.weekly_fable_reset_at is not None

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +16,7 @@ from app.database import get_db
 from app.extraction import ocr_extract_usage, vlm_extract_usage
 from app.models import UsageUpload
 from app.schemas import (
+    ExtractedUsage,
     PaginatedUploads,
     UploadConfirmRequest,
     UploadPreviewResponse,
@@ -27,6 +29,31 @@ _ALLOWED_CONTENT_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 _ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 # Map PIL-detected formats to file extensions.
 _FORMAT_TO_EXT = {"PNG": ".png", "JPEG": ".jpg", "WEBP": ".webp"}
+
+
+def _active_reset_at(db: Session, email: str, metric: str) -> Optional[datetime]:
+    """Return the still-active reset datetime for *email*'s current cycle, if any.
+
+    A reset date is only trusted the first time it's seen for a cycle; once
+    recorded, later uploads within the same cycle must keep showing that same
+    value instead of whatever a fresh (possibly noisier) extraction produces.
+    Returns None once the recorded reset time has passed, since that means a
+    new cycle has started and the freshly extracted value should be trusted.
+    """
+    latest = (
+        db.query(UsageUpload)
+        .filter(UsageUpload.email == email)
+        .order_by(UsageUpload.uploaded_at.desc())
+        .first()
+    )
+    if latest is None:
+        return None
+    reset_at = latest.weekly_reset_at if metric == "weekly" else latest.weekly_fable_reset_at
+    if reset_at is None:
+        return None
+    if reset_at.tzinfo is None:
+        reset_at = reset_at.replace(tzinfo=timezone.utc)
+    return reset_at if reset_at > datetime.now(timezone.utc) else None
 
 
 def _secure_path(image_path: str) -> Path:
@@ -109,27 +136,44 @@ async def _save_upload(file: UploadFile) -> tuple[Path, str, str]:
 @router.post("", response_model=UploadPreviewResponse)
 async def create_upload(
     file: UploadFile = File(...),
+    db: Session = Depends(get_db),
 ) -> UploadPreviewResponse:
     """Save an image and run OCR extraction (RapidOCR primary, PaddleOCR fallback)."""
     full_path, filename, original_name = await _save_upload(file)
 
     result = ocr_extract_usage(full_path)
-    method = "ocr"
-
     extracted = result["extracted"]
+    if isinstance(extracted, dict):
+        extracted = ExtractedUsage(**extracted)
     raw_text = result.get("raw_text")
+
+    weekly_locked = False
+    fable_locked = False
+    if extracted.email:
+        email = extracted.email.strip().lower()
+        active_weekly = _active_reset_at(db, email, "weekly")
+        if active_weekly is not None:
+            extracted.weekly_reset_at = active_weekly
+            weekly_locked = True
+        active_fable = _active_reset_at(db, email, "fable")
+        if active_fable is not None:
+            extracted.weekly_fable_reset_at = active_fable
+            fable_locked = True
 
     return UploadPreviewResponse(
         image_path=filename,
         original_filename=original_name,
         extracted=extracted,
         raw_text=raw_text or None,
+        weekly_reset_locked=weekly_locked,
+        fable_reset_locked=fable_locked,
     )
 
 
 @router.post("/reextract", response_model=UploadPreviewResponse)
 async def reextract_upload(
     image_path: str = Query(..., description="Relative image path returned by /api/uploads"),
+    db: Session = Depends(get_db),
 ) -> UploadPreviewResponse:
     """Re-run extraction using the local Ollama VLM (manual trigger only)."""
     full_path = _secure_path(image_path)
@@ -140,11 +184,30 @@ async def reextract_upload(
         )
 
     result = vlm_extract_usage(full_path)
+    extracted = result["extracted"]
+    if isinstance(extracted, dict):
+        extracted = ExtractedUsage(**extracted)
+
+    weekly_locked = False
+    fable_locked = False
+    if extracted.email:
+        email = extracted.email.strip().lower()
+        active_weekly = _active_reset_at(db, email, "weekly")
+        if active_weekly is not None:
+            extracted.weekly_reset_at = active_weekly
+            weekly_locked = True
+        active_fable = _active_reset_at(db, email, "fable")
+        if active_fable is not None:
+            extracted.weekly_fable_reset_at = active_fable
+            fable_locked = True
+
     return UploadPreviewResponse(
         image_path=image_path,
         original_filename=full_path.name,
-        extracted=result["extracted"],
+        extracted=extracted,
         raw_text=result.get("raw_text") or None,
+        weekly_reset_locked=weekly_locked,
+        fable_reset_locked=fable_locked,
     )
 
 
@@ -161,22 +224,24 @@ def confirm_upload(
             detail="Image not found",
         )
 
+    email = payload.email.strip().lower()
+    # Re-derive the lock server-side rather than trusting whatever reset
+    # dates arrive in the payload: if this email's cycle is still active,
+    # keep the reset date that was already recorded for it.
+    weekly_reset_at = _active_reset_at(db, email, "weekly") or payload.weekly_reset_at
+    fable_reset_at = _active_reset_at(db, email, "fable") or payload.weekly_fable_reset_at
+
     upload = UsageUpload(
-        uploader_name=payload.uploader_name.strip(),
+        email=email,
         image_path=payload.image_path,
         original_filename=payload.original_filename or full_path.name,
-        manager_id=payload.manager_id,
-        team_id=payload.team_id,
         auth_method=payload.auth_method,
-        email=payload.email,
         organization=payload.organization,
         plan_tier=payload.plan_tier,
-        session_usage_pct=payload.session_usage_pct,
         weekly_usage_pct=payload.weekly_usage_pct,
         weekly_fable_usage_pct=payload.weekly_fable_usage_pct,
-        session_reset_at=payload.session_reset_at,
-        weekly_reset_at=payload.weekly_reset_at,
-        weekly_fable_reset_at=payload.weekly_fable_reset_at,
+        weekly_reset_at=weekly_reset_at,
+        weekly_fable_reset_at=fable_reset_at,
         extraction_method=payload.extraction_method,
         raw_extracted_text=payload.raw_extracted_text,
         was_manually_edited=payload.was_manually_edited,
@@ -189,9 +254,7 @@ def confirm_upload(
 
 @router.get("", response_model=PaginatedUploads)
 def list_uploads(
-    user: Optional[str] = Query(None, description="Filter by uploader name"),
-    manager_id: Optional[int] = Query(None, description="Filter by manager"),
-    team_id: Optional[int] = Query(None, description="Filter by team"),
+    email: Optional[str] = Query(None, description="Filter by email"),
     from_date: Optional[str] = Query(None, alias="from", description="UTC date ISO"),
     to_date: Optional[str] = Query(None, alias="to", description="UTC date ISO"),
     skip: int = Query(0, ge=0),
@@ -201,12 +264,8 @@ def list_uploads(
     """Filterable, paginated list of confirmed uploads."""
     query = db.query(UsageUpload)
 
-    if user:
-        query = query.filter(UsageUpload.uploader_name.ilike(f"%{user}%"))
-    if manager_id is not None:
-        query = query.filter(UsageUpload.manager_id == manager_id)
-    if team_id is not None:
-        query = query.filter(UsageUpload.team_id == team_id)
+    if email:
+        query = query.filter(UsageUpload.email.ilike(f"%{email}%"))
     if from_date:
         query = query.filter(UsageUpload.uploaded_at >= from_date)
     if to_date:
